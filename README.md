@@ -3,7 +3,21 @@ Its a problem/solution project.
 
 You can store any struct with a TTL and retrieve by key.
 
+## Current Functions
+```go
+func Add(key string, content interface{}, ttl *int64)
+func Get(key string) (*Item, bool)
+func GetAndRefresh(key string) (*Item, bool)
+func Delete(key string) 
+```
+
 ## Basic Usage
+
+You can import package with
+```go
+import "github.com/hpardora/memory_ttl_storage"
+```
+
 To work with default values
 ```go
 type Example struct {}
@@ -29,10 +43,8 @@ cfg := &MemoryTTLStoreConfig{
 mts := New(cfg)
 ```
 
-## Current Functions
+Update the DefaultTTL
 ```go
-func Add(key string, content interface{}, ttl *int64)
-func Get(key string) (*Item, bool)
-func GetAndRefresh(key string) (*Item, bool)
-func Delete(key string) 
+mts := New(nil)
+mts.SetDefaultTTL(100)
 ```
