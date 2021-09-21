@@ -9,6 +9,7 @@ import (
 const (
 	defaultTickerTime = time.Second * 1
 	defaultTTL        = int64(10)
+	defaultShowLogs   = false
 )
 
 type Item struct {
@@ -30,18 +31,23 @@ type MemoryTTLStoreConfig struct {
 	ShowLogs   bool
 }
 
-func New(cfg MemoryTTLStoreConfig) *MemoryTTLStorage {
+func New(cfg *MemoryTTLStoreConfig) *MemoryTTLStorage {
 	finalTickerTime := defaultTickerTime
-	if cfg.TickerTime != 0 {
-		finalTickerTime = cfg.TickerTime
-	}
-	var finalTTLValue = defaultTTL
-	if cfg.TTLValue != 0 {
-		finalTTLValue = cfg.TTLValue
+	finalTTLValue := defaultTTL
+	finalShowLogs := defaultShowLogs
+
+	if cfg != nil{
+		if cfg.TickerTime != 0 {
+			finalTickerTime = cfg.TickerTime
+		}
+		if cfg.TTLValue != 0 {
+			finalTTLValue = cfg.TTLValue
+		}
+		finalShowLogs = cfg.ShowLogs
 	}
 
 	rlc := MemoryTTLStorage{
-		showLogs:   cfg.ShowLogs,
+		showLogs:   finalShowLogs,
 		defaultTTL: finalTTLValue,
 		items:      make(map[string]Item),
 	}

@@ -16,7 +16,7 @@ type TestStructTwo struct {
 }
 
 func TestAddDefaultTTL(t *testing.T){
-	mts := New(MemoryTTLStoreConfig{})
+	mts := New(nil)
 	ts := &TestStructOne{}
 	keyTest := "test_key"
 	mts.Add(keyTest, ts, nil)
@@ -30,7 +30,7 @@ func TestAddDefaultTTL(t *testing.T){
 }
 
 func TestAddAndRetrieveAnObject(t *testing.T){
-	mts := New(MemoryTTLStoreConfig{})
+	mts := New(nil)
 
 	keyTestOne := "test_key_one"
 	tsOne := &TestStructOne{One: 1, Two: "two"}
@@ -53,7 +53,7 @@ func TestAddAndRetrieveAnObject(t *testing.T){
 }
 
 func TestElementDontExistsAfterTTL(t *testing.T){
-	mts := New(MemoryTTLStoreConfig{TTLValue: 1})
+	mts := New(&MemoryTTLStoreConfig{TTLValue: 1})
 	ts := &TestStructOne{}
 	keyTest := "test_key"
 	mts.Add(keyTest, ts, nil)
