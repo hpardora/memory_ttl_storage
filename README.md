@@ -6,8 +6,8 @@ You can store any struct with a TTL and retrieve by key.
 ## Current Functions
 ```go
 func Add(key string, content interface{}, ttl *int64)
-func Get(key string) (*Item, bool)
-func GetAndRefresh(key string) (*Item, bool)
+func Get(key string) (interface{}, bool)
+func GetAndRefresh(key string) (interface{}, bool)
 func Delete(key string) 
 ```
 
@@ -30,7 +30,7 @@ if !ok {
     t.Error("cannot retrieve from service")
 }
 
-restored := item.Content.(*Example)
+restored := item.(*Example)
 ```
 
 Start with custom config

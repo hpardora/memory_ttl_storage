@@ -22,13 +22,11 @@ func TestAddDefaultTTL(t *testing.T){
 	ts := &TestStructOne{}
 	keyTest := "test_key"
 	mts.Add(keyTest, ts, nil)
-	i, ok := mts.Get(keyTest)
+	_, ok := mts.Get(keyTest)
 	if !ok {
 		t.Error("cannot retrieve from service")
 	}
-	if i.TTL != defaultTTL {
-		t.Error("stored TTL is not de defaultTTL")
-	}
+
 }
 
 func TestAddAndRetrieveAnObject(t *testing.T){
@@ -48,7 +46,7 @@ func TestAddAndRetrieveAnObject(t *testing.T){
 	if !ok {
 		t.Error("cannot retrieve from service")
 	}
-	returned := i.Content.(*TestStructOne)
+	returned := i.(*TestStructOne)
 
 	if tsOne.One != returned.One {
 		t.Errorf("Unexpected respose! Expected %d, got %d", tsOne.One, returned.One)
@@ -67,33 +65,30 @@ func TestElementDontExistsAfterTTL(t *testing.T){
 	if ok {
 		t.Error("you should not be able to see retrieve this element")
 	}
-	defer mts.Stop()
 }
 
 func TestRefreshTTL(t *testing.T){
-	mts := New(nil)
+	mts := New(&MemoryTTLStoreConfig{TTLValue: 3})
 	defer mts.Stop()
-
 	ts := &TestStructOne{}
+
 	keyTest := "test_key"
 	mts.Add(keyTest, ts, nil)
-	time.Sleep(time.Second * 1)
+	time.Sleep(time.Second * 2)
 
 	tempItem, ok := mts.GetAndRefresh(keyTest)
 	if !ok {
 		t.Error("the element has to be restored")
 	}
-	time.Sleep(time.Second * 1)
+	time.Sleep(time.Second * 2)
 	finalItem, ok := mts.Get(keyTest)
 	if !ok {
 		t.Error("the element has to be restored")
 	}
-	if tempItem.Content != finalItem.Content {
+	if tempItem != finalItem {
 		t.Error("content at this point must be equal")
 	}
-	if tempItem.ExpireTimestamp >= finalItem.ExpireTimestamp {
-		t.Error("exp time of initial element must be lower than the element after get and refresh")
-	}
+
 }
 
 func TestGetDontModifyExpTS(t *testing.T){
@@ -115,10 +110,7 @@ func TestGetDontModifyExpTS(t *testing.T){
 	if !ok {
 		t.Error("the element has to be restored")
 	}
-	if tempItem.Content != finalItem.Content {
+	if tempItem != finalItem {
 		t.Error("content at this point must be equal")
-	}
-	if tempItem.ExpireTimestamp != finalItem.ExpireTimestamp {
-		t.Error("exp time of initial element must be equal to the exp time of the second recovered element")
 	}
 }

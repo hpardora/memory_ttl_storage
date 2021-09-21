@@ -111,15 +111,15 @@ func (r *MemoryTTLStorage) Add(key string, content interface{}, ttl *int64) {
 	r.items[key] = i
 }
 
-func (r *MemoryTTLStorage) Get(key string) (*Item, bool) {
+func (r *MemoryTTLStorage) Get(key string) (interface{}, bool) {
 	val, ok := r.items[key]
-	return &val, ok
+	return val.Content, ok
 }
 
-func (r *MemoryTTLStorage) GetAndRefresh(key string) (*Item, bool) {
+func (r *MemoryTTLStorage) GetAndRefresh(key string) (interface{}, bool) {
 	val, ok := r.items[key]
 	r.Add(key, val.Content, &val.TTL)
-	return &val, ok
+	return val.Content, ok
 }
 
 func (r *MemoryTTLStorage) Delete(key string) {
