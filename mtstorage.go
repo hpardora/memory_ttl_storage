@@ -96,6 +96,21 @@ func (r *MemoryTTLStorage) SetDefaultTTL(defaultTTL int64) {
 	r.log("defaultTTL updated", defaultTTL)
 }
 
+func (r *MemoryTTLStorage) Add(key string, content interface{}, ttl *int64) {
+	finalTTL := r.defaultTTL
+	if ttl != nil {
+		finalTTL = *ttl
+	}
+
+	expirationTS := time.Now().Unix() + finalTTL
+	i := Item{
+		Content:         content,
+		ExpireTimestamp: expirationTS,
+		TTL:             finalTTL,
+	}
+	r.items[key] = i
+}
+
 func (r *MemoryTTLStorage) Get(key string) (*Item, bool) {
 	val, ok := r.items[key]
 	return &val, ok
@@ -110,19 +125,4 @@ func (r *MemoryTTLStorage) GetAndRefresh(key string) (*Item, bool) {
 func (r *MemoryTTLStorage) Delete(key string) {
 	delete(r.items, key)
 	r.log("deleted element with key", key)
-}
-
-func (r *MemoryTTLStorage) Add(key string, content interface{}, ttl *int64) {
-	finalTTL := r.defaultTTL
-	if ttl != nil {
-		finalTTL = *ttl
-	}
-
-	expirationTS := time.Now().Unix() + finalTTL
-	i := Item{
-		Content:         content,
-		ExpireTimestamp: expirationTS,
-		TTL:             finalTTL,
-	}
-	r.items[key] = i
 }
