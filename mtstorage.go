@@ -24,18 +24,24 @@ type MemoryTTLStorage struct {
 	defaultTTL int64
 }
 
-func New(tickerTime *time.Duration, ttlValue *int64, showLogs bool) *MemoryTTLStorage {
+type MemoryTTLStoreConfig struct {
+	TickerTime time.Duration
+	TTLValue   int64
+	ShowLogs   bool
+}
+
+func New(cfg MemoryTTLStoreConfig) *MemoryTTLStorage {
 	finalTickerTime := defaultTickerTime
-	if tickerTime != nil {
-		finalTickerTime = *tickerTime
+	if cfg.TickerTime != 0 {
+		finalTickerTime = cfg.TickerTime
 	}
 	var finalTTLValue = defaultTTL
-	if ttlValue != nil {
-		finalTTLValue = *ttlValue
+	if cfg.TTLValue != 0 {
+		finalTTLValue = cfg.TTLValue
 	}
 
 	rlc := MemoryTTLStorage{
-		showLogs:   showLogs,
+		showLogs:   cfg.ShowLogs,
 		defaultTTL: finalTTLValue,
 		items:      make(map[string]Item),
 	}
