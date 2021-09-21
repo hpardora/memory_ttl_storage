@@ -17,6 +17,8 @@ type TestStructTwo struct {
 
 func TestAddDefaultTTL(t *testing.T){
 	mts := New(nil)
+	defer mts.Stop()
+
 	ts := &TestStructOne{}
 	keyTest := "test_key"
 	mts.Add(keyTest, ts, nil)
@@ -31,6 +33,7 @@ func TestAddDefaultTTL(t *testing.T){
 
 func TestAddAndRetrieveAnObject(t *testing.T){
 	mts := New(nil)
+	defer mts.Stop()
 
 	keyTestOne := "test_key_one"
 	tsOne := &TestStructOne{One: 1, Two: "two"}
@@ -54,6 +57,8 @@ func TestAddAndRetrieveAnObject(t *testing.T){
 
 func TestElementDontExistsAfterTTL(t *testing.T){
 	mts := New(&MemoryTTLStoreConfig{TTLValue: 1})
+	defer mts.Stop()
+
 	ts := &TestStructOne{}
 	keyTest := "test_key"
 	mts.Add(keyTest, ts, nil)
@@ -62,5 +67,58 @@ func TestElementDontExistsAfterTTL(t *testing.T){
 	if ok {
 		t.Error("you should not be able to see retrieve this element")
 	}
+	defer mts.Stop()
+}
 
+func TestRefreshTTL(t *testing.T){
+	mts := New(nil)
+	defer mts.Stop()
+
+	ts := &TestStructOne{}
+	keyTest := "test_key"
+	mts.Add(keyTest, ts, nil)
+	time.Sleep(time.Second * 1)
+
+	tempItem, ok := mts.GetAndRefresh(keyTest)
+	if !ok {
+		t.Error("the element has to be restored")
+	}
+	time.Sleep(time.Second * 1)
+	finalItem, ok := mts.Get(keyTest)
+	if !ok {
+		t.Error("the element has to be restored")
+	}
+	if tempItem.Content != finalItem.Content {
+		t.Error("content at this point must be equal")
+	}
+	if tempItem.ExpireTimestamp >= finalItem.ExpireTimestamp {
+		t.Error("exp time of initial element must be lower than the element after get and refresh")
+	}
+}
+
+func TestGetDontModifyExpTS(t *testing.T){
+	mts := New(nil)
+	defer mts.Stop()
+
+	ts := &TestStructOne{}
+	keyTest := "test_key"
+	mts.Add(keyTest, ts, nil)
+	time.Sleep(time.Second * 1)
+
+	tempItem, ok := mts.Get(keyTest)
+	if !ok {
+		t.Error("the element has to be restored")
+	}
+
+	time.Sleep(time.Second * 1)
+	finalItem, ok := mts.Get(keyTest)
+	if !ok {
+		t.Error("the element has to be restored")
+	}
+	if tempItem.Content != finalItem.Content {
+		t.Error("content at this point must be equal")
+	}
+	if tempItem.ExpireTimestamp != finalItem.ExpireTimestamp {
+		t.Error("exp time of initial element must be equal to the exp time of the second recovered element")
+	}
 }

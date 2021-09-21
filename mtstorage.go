@@ -101,6 +101,12 @@ func (r *MemoryTTLStorage) Get(key string) (*Item, bool) {
 	return &val, ok
 }
 
+func (r *MemoryTTLStorage) GetAndRefresh(key string) (*Item, bool) {
+	val, ok := r.items[key]
+	r.Add(key, val.Content, &val.TTL)
+	return &val, ok
+}
+
 func (r *MemoryTTLStorage) Delete(key string) {
 	delete(r.items, key)
 	r.log("deleted element with key", key)
