@@ -3,13 +3,14 @@ package memory_ttl_storage
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
 )
 
 const (
 	defaultTickerTime = time.Second * 1
 	defaultTTL        = int64(10)
-	defaultShowLogs   = false
+    defaultShowLogs   = false
 )
 
 type Item struct {
@@ -23,6 +24,7 @@ type MemoryTTLStorage struct {
 	ticker     time.Ticker
 	items      map[string]Item
 	defaultTTL int64
+	mu         sync.RWMutex
 }
 
 type MemoryTTLStoreConfig struct {
@@ -36,7 +38,7 @@ func New(cfg *MemoryTTLStoreConfig) *MemoryTTLStorage {
 	finalTTLValue := defaultTTL
 	finalShowLogs := defaultShowLogs
 
-	if cfg != nil{
+	if cfg != nil {
 		if cfg.TickerTime != 0 {
 			finalTickerTime = cfg.TickerTime
 		}
@@ -71,58 +73,80 @@ func New(cfg *MemoryTTLStoreConfig) *MemoryTTLStorage {
 	return &rlc
 }
 
-func (r *MemoryTTLStorage) Stop() {
-	r.ticker.Stop()
+func (mts *MemoryTTLStorage) Stop() {
+	mts.ticker.Stop()
 }
 
-func (r *MemoryTTLStorage) clearOldEntries() {
-	for k, v := range r.items {
+func (mts *MemoryTTLStorage) clearOldEntries() {
+	mts.mu.Lock()
+	defer mts.mu.Unlock()
+
+	for k, v := range mts.items {
 		if v.ExpireTimestamp < time.Now().Unix() {
-			r.log("deleting outdated item", k)
-			delete(r.items, k)
+			mts.log("deleting outdated item", k)
+			delete(mts.items, k)
 		}
 	}
 }
 
-func (r *MemoryTTLStorage) log(v ...interface{}) {
-	if r.showLogs {
+func (mts *MemoryTTLStorage) log(v ...interface{}) {
+	if mts.showLogs {
 		data := v
 		log.Println(data)
 	}
 }
 
-func (r *MemoryTTLStorage) SetDefaultTTL(defaultTTL int64) {
-	r.defaultTTL = defaultTTL
-	r.log("defaultTTL updated", defaultTTL)
+func (mts *MemoryTTLStorage) SetDefaultTTL(defaultTTL int64) {
+	mts.defaultTTL = defaultTTL
+	mts.log("defaultTTL updated", defaultTTL)
 }
 
-func (r *MemoryTTLStorage) Add(key string, content interface{}, ttl *int64) {
-	finalTTL := r.defaultTTL
+func (mts *MemoryTTLStorage) prepareItem(content interface{}, ttl *int64) Item {
+	finalTTL := mts.defaultTTL
 	if ttl != nil {
 		finalTTL = *ttl
 	}
 
 	expirationTS := time.Now().Unix() + finalTTL
-	i := Item{
+	item := Item{
 		Content:         content,
 		ExpireTimestamp: expirationTS,
 		TTL:             finalTTL,
 	}
-	r.items[key] = i
+	return item
 }
 
-func (r *MemoryTTLStorage) Get(key string) (interface{}, bool) {
-	val, ok := r.items[key]
+func (mts *MemoryTTLStorage) Add(key string, content interface{}, ttl *int64) {
+	mts.mu.Lock()
+	defer mts.mu.Unlock()
+	item := mts.prepareItem(content, ttl)
+	mts.items[key] = item
+}
+
+func (mts *MemoryTTLStorage) Get(key string) (interface{}, bool) {
+	mts.mu.RLock()
+	defer mts.mu.Unlock()
+
+	val, ok := mts.items[key]
 	return val.Content, ok
 }
 
-func (r *MemoryTTLStorage) GetAndRefresh(key string) (interface{}, bool) {
-	val, ok := r.items[key]
-	r.Add(key, val.Content, &val.TTL)
+func (mts *MemoryTTLStorage) GetAndRefresh(key string) (interface{}, bool) {
+	mts.mu.Lock()
+	defer mts.mu.Unlock()
+
+	val, ok := mts.items[key]
+
+	item := mts.prepareItem(val.Content, &val.TTL)
+	mts.items[key] = item
+
 	return val.Content, ok
 }
 
-func (r *MemoryTTLStorage) Delete(key string) {
-	delete(r.items, key)
-	r.log("deleted element with key", key)
+func (mts *MemoryTTLStorage) Delete(key string) {
+	mts.mu.Lock()
+	defer mts.mu.Unlock()
+
+	delete(mts.items, key)
+	mts.log("deleted element with key", key)
 }

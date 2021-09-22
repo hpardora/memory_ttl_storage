@@ -92,7 +92,7 @@ func TestRefreshTTL(t *testing.T){
 }
 
 func TestGetDontModifyExpTS(t *testing.T){
-	mts := New(nil)
+	mts := New(&MemoryTTLStoreConfig{TTLValue: 2})
 	defer mts.Stop()
 
 	ts := &TestStructOne{}
@@ -112,5 +112,11 @@ func TestGetDontModifyExpTS(t *testing.T){
 	}
 	if tempItem != finalItem {
 		t.Error("content at this point must be equal")
+	}
+
+	time.Sleep(time.Second * 2)
+	_, ok = mts.Get(keyTest)
+	if ok {
+		t.Error("item should not exist")
 	}
 }
