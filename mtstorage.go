@@ -125,8 +125,8 @@ func (mts *MemoryTTLStorage) Add(key string, content interface{}, ttl *int64) {
 }
 
 func (mts *MemoryTTLStorage) Get(key string) (interface{}, bool) {
-	mts.mu.RLock()
-	defer mts.mu.RUnlock()
+	mts.mu.Lock()
+	defer mts.mu.Unlock()
 
 	val, ok := mts.items[key]
 	return val.Content, ok
