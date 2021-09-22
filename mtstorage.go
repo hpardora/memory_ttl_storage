@@ -119,13 +119,14 @@ func (mts *MemoryTTLStorage) prepareItem(content interface{}, ttl *int64) Item {
 func (mts *MemoryTTLStorage) Add(key string, content interface{}, ttl *int64) {
 	mts.mu.Lock()
 	defer mts.mu.Unlock()
+
 	item := mts.prepareItem(content, ttl)
 	mts.items[key] = item
 }
 
 func (mts *MemoryTTLStorage) Get(key string) (interface{}, bool) {
 	mts.mu.RLock()
-	defer mts.mu.Unlock()
+	defer mts.mu.RUnlock()
 
 	val, ok := mts.items[key]
 	return val.Content, ok
