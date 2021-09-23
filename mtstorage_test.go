@@ -120,3 +120,22 @@ func TestGetDontModifyExpTS(t *testing.T){
 		t.Error("item should not exist")
 	}
 }
+
+func TestBackup(t *testing.T) {
+	mts := New(&MemoryTTLStoreConfig{TTLValue: 2, BackupPath: "/tmp"})
+	test := &TestStructOne{One: 1, Two: "two"}
+	test_key := "test_key"
+	mts.Add(test_key, test, nil)
+	mts.Stop()
+
+	mts2 := New(&MemoryTTLStoreConfig{TTLValue: 2, BackupPath: "/tmp"})
+	tmp, ok := mts2.Get(test_key)
+	if !ok {
+		t.Error("You must retrieve the initial item at this point")
+	}
+	test2 := tmp.(*TestStructOne)
+	if test != test2 {
+		t.Error("at this moment the items must be equals")
+	}
+
+}

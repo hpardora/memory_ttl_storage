@@ -1,8 +1,11 @@
 package memory_ttl_storage
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
 	"log"
+	"os"
 	"sync"
 	"time"
 )
@@ -10,7 +13,10 @@ import (
 const (
 	defaultTickerTime = time.Second * 1
 	defaultTTL        = int64(10)
-    defaultShowLogs   = false
+	defaultShowLogs   = false
+	defaultBackupPath = ""
+
+	backupFileName = "mtstorage.dat"
 )
 
 type Item struct {
@@ -20,23 +26,29 @@ type Item struct {
 }
 
 type MemoryTTLStorage struct {
+	useBackup  bool
 	showLogs   bool
 	ticker     time.Ticker
 	items      map[string]Item
 	defaultTTL int64
-	mu         sync.RWMutex
+	backup     *BackupManager
+	mutext     sync.RWMutex
 }
 
 type MemoryTTLStoreConfig struct {
 	TickerTime time.Duration
 	TTLValue   int64
 	ShowLogs   bool
+	BackupPath string
 }
 
 func New(cfg *MemoryTTLStoreConfig) *MemoryTTLStorage {
 	finalTickerTime := defaultTickerTime
 	finalTTLValue := defaultTTL
 	finalShowLogs := defaultShowLogs
+	finalBackupPath := defaultBackupPath
+	useBackup := false
+
 
 	if cfg != nil {
 		if cfg.TickerTime != 0 {
@@ -45,13 +57,40 @@ func New(cfg *MemoryTTLStoreConfig) *MemoryTTLStorage {
 		if cfg.TTLValue != 0 {
 			finalTTLValue = cfg.TTLValue
 		}
+		if cfg.BackupPath != "" {
+			finalBackupPath = fmt.Sprintf("%s/%s", cfg.BackupPath, backupFileName)
+			useBackup = true
+		}
 		finalShowLogs = cfg.ShowLogs
 	}
 
 	rlc := MemoryTTLStorage{
 		showLogs:   finalShowLogs,
 		defaultTTL: finalTTLValue,
+		useBackup:  useBackup,
 		items:      make(map[string]Item),
+	}
+
+	if rlc.useBackup {
+		err := rlc.prepareBackupPath(cfg.BackupPath)
+		if err != nil {
+			panic(fmt.Sprintf("unable to config backup path: %s", finalBackupPath))
+		}
+
+		rlc.backup = NewBackupManager(finalBackupPath)
+		dataBytes, err := rlc.backup.Restore()
+		if err != nil  {
+			log.Printf("unable to config backup path: %s", finalBackupPath)
+		}
+		if dataBytes != nil{
+			dec := gob.NewDecoder(bytes.NewReader(*dataBytes))
+			interf := map[string]Item{}
+			dec.Decode(interf)
+
+			if err != nil {
+				panic(err)
+			}
+		}
 	}
 
 	rlc.log(fmt.Sprintf("creating a MemoryTTLStorage with tickerTime %d/s and default TTL %d/s", finalTickerTime/time.Second, finalTTLValue))
@@ -75,11 +114,26 @@ func New(cfg *MemoryTTLStoreConfig) *MemoryTTLStorage {
 
 func (mts *MemoryTTLStorage) Stop() {
 	mts.ticker.Stop()
+	if mts.useBackup{
+		mts.mutext.Lock()
+		defer mts.mutext.Unlock()
+		mts.backup.Store(mts.items)
+	}
+}
+
+func (mts *MemoryTTLStorage) prepareBackupPath(folder string) error {
+	if _, err := os.Stat(folder); os.IsNotExist(err) {
+		err := os.Mkdir(folder, os.ModePerm)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (mts *MemoryTTLStorage) clearOldEntries() {
-	mts.mu.Lock()
-	defer mts.mu.Unlock()
+	mts.mutext.Lock()
+	defer mts.mutext.Unlock()
 
 	for k, v := range mts.items {
 		if v.ExpireTimestamp < time.Now().Unix() {
@@ -117,24 +171,24 @@ func (mts *MemoryTTLStorage) prepareItem(content interface{}, ttl *int64) Item {
 }
 
 func (mts *MemoryTTLStorage) Add(key string, content interface{}, ttl *int64) {
-	mts.mu.Lock()
-	defer mts.mu.Unlock()
+	mts.mutext.Lock()
+	defer mts.mutext.Unlock()
 
 	item := mts.prepareItem(content, ttl)
 	mts.items[key] = item
 }
 
 func (mts *MemoryTTLStorage) Get(key string) (interface{}, bool) {
-	mts.mu.Lock()
-	defer mts.mu.Unlock()
+	mts.mutext.Lock()
+	defer mts.mutext.Unlock()
 
 	val, ok := mts.items[key]
 	return val.Content, ok
 }
 
 func (mts *MemoryTTLStorage) GetAndRefresh(key string) (interface{}, bool) {
-	mts.mu.Lock()
-	defer mts.mu.Unlock()
+	mts.mutext.Lock()
+	defer mts.mutext.Unlock()
 
 	val, ok := mts.items[key]
 
@@ -145,8 +199,8 @@ func (mts *MemoryTTLStorage) GetAndRefresh(key string) (interface{}, bool) {
 }
 
 func (mts *MemoryTTLStorage) Delete(key string) {
-	mts.mu.Lock()
-	defer mts.mu.Unlock()
+	mts.mutext.Lock()
+	defer mts.mutext.Unlock()
 
 	delete(mts.items, key)
 	mts.log("deleted element with key", key)
