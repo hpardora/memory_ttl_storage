@@ -17,7 +17,7 @@ type TestStructTwo struct {
 	Four  string
 }
 
-const testPath = "/tmp/the storage_test.dat"
+const testPath = "/tmp/the_storage_test.dat"
 const testKey = "test_key"
 
 func TestAddDefaultTTL(t *testing.T) {

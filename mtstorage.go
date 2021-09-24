@@ -131,6 +131,9 @@ func (mts *MemoryTTLStorage) clearOldEntries() {
 			delete(mts.items, k)
 		}
 	}
+	if mts.useBackup{
+		mts.backup.Store(mts.items)
+	}
 }
 
 func (mts *MemoryTTLStorage) log(v ...interface{}) {
