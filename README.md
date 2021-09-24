@@ -9,6 +9,8 @@ func Add(key string, content interface{}, ttl *int64)
 func Get(key string) (interface{}, bool)
 func GetAndRefresh(key string) (interface{}, bool)
 func Delete(key string) 
+// Stop ticker and Store data if UseBackup
+func Stop()
 ```
 
 ## Basic Usage
