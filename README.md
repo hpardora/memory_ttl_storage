@@ -39,9 +39,12 @@ cfg := &MemoryTTLStoreConfig{
 	TickerTime: *time.Duration  // How often the ticker ticks
 	TTLValue   int64            // Default number of seconds for items TTL 
 	ShowLogs   bool             // if you what to show basic logs...
+	UseBackup  bool             // true for save cache data on Stop(), and restore on startup
+	BackupPath string           // by default /opt/memory_ttl_storage/mtstorage.dat
 }
 mts := New(cfg)
 ```
+> :warning: **If you want to store custom structs, you must add the following code: gob.Register(YourStruct{})**
 
 Update the DefaultTTL
 ```go

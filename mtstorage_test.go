@@ -1,6 +1,8 @@
 package memory_ttl_storage
 
 import (
+	"encoding/gob"
+	"os"
 	"testing"
 	"time"
 )
@@ -12,10 +14,13 @@ type TestStructOne struct {
 
 type TestStructTwo struct {
 	Three int
-	Four string
+	Four  string
 }
 
-func TestAddDefaultTTL(t *testing.T){
+const testPath = "/tmp/the storage_test.dat"
+const testKey = "test_key"
+
+func TestAddDefaultTTL(t *testing.T) {
 	mts := New(nil)
 	defer mts.Stop()
 
@@ -29,7 +34,7 @@ func TestAddDefaultTTL(t *testing.T){
 
 }
 
-func TestAddAndRetrieveAnObject(t *testing.T){
+func TestAddAndRetrieveAnObject(t *testing.T) {
 	mts := New(nil)
 	defer mts.Stop()
 
@@ -53,7 +58,7 @@ func TestAddAndRetrieveAnObject(t *testing.T){
 	}
 }
 
-func TestElementDontExistsAfterTTL(t *testing.T){
+func TestElementDontExistsAfterTTL(t *testing.T) {
 	mts := New(&MemoryTTLStoreConfig{TTLValue: 1})
 	defer mts.Stop()
 
@@ -67,7 +72,7 @@ func TestElementDontExistsAfterTTL(t *testing.T){
 	}
 }
 
-func TestRefreshTTL(t *testing.T){
+func TestRefreshTTL(t *testing.T) {
 	mts := New(&MemoryTTLStoreConfig{TTLValue: 3})
 	defer mts.Stop()
 	ts := &TestStructOne{}
@@ -91,7 +96,7 @@ func TestRefreshTTL(t *testing.T){
 
 }
 
-func TestGetDontModifyExpTS(t *testing.T){
+func TestGetDontModifyExpTS(t *testing.T) {
 	mts := New(&MemoryTTLStoreConfig{TTLValue: 2})
 	defer mts.Stop()
 
@@ -119,4 +124,33 @@ func TestGetDontModifyExpTS(t *testing.T){
 	if ok {
 		t.Error("item should not exist")
 	}
+}
+
+func TestFileStore(t *testing.T) {
+	mts := New(&MemoryTTLStoreConfig{TTLValue: 2, BackupPath: testPath, UseBackup: true})
+	gob.Register(TestStructOne{})
+	test := TestStructOne{One: 1, Two: "two"}
+	mts.Add(testKey, test, nil)
+	mts.Stop()
+	os.Remove(testPath)
+}
+
+func TestFileStoreRestore(t *testing.T) {
+	mts := New(&MemoryTTLStoreConfig{TTLValue: 2, BackupPath: testPath, UseBackup: true})
+	gob.Register(TestStructOne{})
+	test := TestStructOne{One: 1, Two: "two"}
+	mts.Add(testKey, test, nil)
+	mts.Stop()
+
+	mts2 := New(&MemoryTTLStoreConfig{TTLValue: 2, BackupPath: testPath, UseBackup: true})
+	tmp, ok := mts2.Get(testKey)
+	if !ok {
+		t.Error("You must retrieve the initial item at this point")
+	}
+	test2 := tmp.(TestStructOne)
+	if test != test2 {
+		t.Error("at this moment the items must be equals")
+	}
+	os.Remove(testPath)
+
 }
