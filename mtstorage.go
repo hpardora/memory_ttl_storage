@@ -1,11 +1,10 @@
 package memory_ttl_storage
 
 import (
-	"bytes"
-	"encoding/gob"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -14,9 +13,7 @@ const (
 	defaultTickerTime = time.Second * 1
 	defaultTTL        = int64(10)
 	defaultShowLogs   = false
-	defaultBackupPath = ""
-
-	backupFileName = "mtstorage.dat"
+	defaultBackupFile = "/opt/memory_ttl_storage/mtstorage.dat"
 )
 
 type Item struct {
@@ -31,7 +28,7 @@ type MemoryTTLStorage struct {
 	ticker     time.Ticker
 	items      map[string]Item
 	defaultTTL int64
-	backup     *BackupManager
+	backup     *StorageManager
 	mutext     sync.RWMutex
 }
 
@@ -39,6 +36,7 @@ type MemoryTTLStoreConfig struct {
 	TickerTime time.Duration
 	TTLValue   int64
 	ShowLogs   bool
+	UseBackup  bool
 	BackupPath string
 }
 
@@ -46,9 +44,6 @@ func New(cfg *MemoryTTLStoreConfig) *MemoryTTLStorage {
 	finalTickerTime := defaultTickerTime
 	finalTTLValue := defaultTTL
 	finalShowLogs := defaultShowLogs
-	finalBackupPath := defaultBackupPath
-	useBackup := false
-
 
 	if cfg != nil {
 		if cfg.TickerTime != 0 {
@@ -57,9 +52,15 @@ func New(cfg *MemoryTTLStoreConfig) *MemoryTTLStorage {
 		if cfg.TTLValue != 0 {
 			finalTTLValue = cfg.TTLValue
 		}
-		if cfg.BackupPath != "" {
-			finalBackupPath = fmt.Sprintf("%s/%s", cfg.BackupPath, backupFileName)
-			useBackup = true
+		if cfg.UseBackup {
+			if cfg.BackupPath == "" {
+				cfg.BackupPath = defaultBackupFile
+			}
+			dir := filepath.Dir(cfg.BackupPath)
+			err := prepareBackupPath(dir)
+			if err != nil {
+				log.Println("unable to config backup path", cfg.BackupPath)
+			}
 		}
 		finalShowLogs = cfg.ShowLogs
 	}
@@ -67,29 +68,15 @@ func New(cfg *MemoryTTLStoreConfig) *MemoryTTLStorage {
 	rlc := MemoryTTLStorage{
 		showLogs:   finalShowLogs,
 		defaultTTL: finalTTLValue,
-		useBackup:  useBackup,
+		useBackup:  cfg.UseBackup,
 		items:      make(map[string]Item),
 	}
 
-	if rlc.useBackup {
-		err := rlc.prepareBackupPath(cfg.BackupPath)
+	if rlc.useBackup && cfg.BackupPath != "" {
+		rlc.backup = NewStorageManager(cfg.BackupPath)
+		err := rlc.backup.Restore(&rlc.items)
 		if err != nil {
-			panic(fmt.Sprintf("unable to config backup path: %s", finalBackupPath))
-		}
-
-		rlc.backup = NewBackupManager(finalBackupPath)
-		dataBytes, err := rlc.backup.Restore()
-		if err != nil  {
-			log.Printf("unable to config backup path: %s", finalBackupPath)
-		}
-		if dataBytes != nil{
-			dec := gob.NewDecoder(bytes.NewReader(*dataBytes))
-			interf := map[string]Item{}
-			dec.Decode(interf)
-
-			if err != nil {
-				panic(err)
-			}
+			log.Printf("unable to restore data from backup file: %s", cfg.BackupPath)
 		}
 	}
 
@@ -114,14 +101,17 @@ func New(cfg *MemoryTTLStoreConfig) *MemoryTTLStorage {
 
 func (mts *MemoryTTLStorage) Stop() {
 	mts.ticker.Stop()
-	if mts.useBackup{
+	if mts.useBackup {
 		mts.mutext.Lock()
 		defer mts.mutext.Unlock()
-		mts.backup.Store(mts.items)
+		err := mts.backup.Store(mts.items)
+		if err != nil {
+			log.Println("unable to store data", err)
+		}
 	}
 }
 
-func (mts *MemoryTTLStorage) prepareBackupPath(folder string) error {
+func prepareBackupPath(folder string) error {
 	if _, err := os.Stat(folder); os.IsNotExist(err) {
 		err := os.Mkdir(folder, os.ModePerm)
 		if err != nil {

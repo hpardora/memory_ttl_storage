@@ -9,24 +9,30 @@ import (
 	"os"
 )
 
-type BackupManager struct {
+type StorageManager struct {
 	backupFilePath  string
 }
 
-func NewBackupManager(backupFilePath string) *BackupManager {
-	return &BackupManager{backupFilePath: backupFilePath}
+func NewStorageManager(backupFilePath string) *StorageManager {
+	return &StorageManager{backupFilePath: backupFilePath}
 }
 
-func (b *BackupManager) Restore() (*[]byte, error){
+func (b *StorageManager) Restore(i interface{})  error{
 	restoredData, err := b.readFromFile(b.backupFilePath)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	return b.decompress(restoredData)
-
+	data, err := b.decompress(restoredData)
+	if err != nil {
+		return err
+	}
+	dec := gob.NewDecoder(bytes.NewReader(*data))
+	err = dec.Decode(i)
+	return err
 }
 
-func (b *BackupManager) Store(i interface{}) error {
+func (b *StorageManager) Store(i interface{}) error {
+
 	dataOut, err := b.encodeToBytes(i)
 	if err != nil {
 		return err
@@ -38,11 +44,12 @@ func (b *BackupManager) Store(i interface{}) error {
 	return b.writeToFile(dataOut, b.backupFilePath)
 }
 
-func (b *BackupManager) encodeToBytes(p interface{}) ([]byte, error) {
+func (b *StorageManager) encodeToBytes(i interface{}) ([]byte, error) {
 
 	buf := bytes.Buffer{}
 	enc := gob.NewEncoder(&buf)
-	err := enc.Encode(p)
+	gob.Register(i)
+	err := enc.Encode(i)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +57,7 @@ func (b *BackupManager) encodeToBytes(p interface{}) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (b *BackupManager) compress(s []byte) ([]byte, error) {
+func (b *StorageManager) compress(s []byte) ([]byte, error) {
 	zipbuf := bytes.Buffer{}
 	zipped := gzip.NewWriter(&zipbuf)
 	_, err := zipped.Write(s)
@@ -62,7 +69,7 @@ func (b *BackupManager) compress(s []byte) ([]byte, error) {
 	return zipbuf.Bytes(), nil
 }
 
-func (b *BackupManager) decompress(s []byte) (*[]byte, error) {
+func (b *StorageManager) decompress(s []byte) (*[]byte, error) {
 	rdr, _ := gzip.NewReader(bytes.NewReader(s))
 	data, err := ioutil.ReadAll(rdr)
 	if err != nil {
@@ -73,7 +80,7 @@ func (b *BackupManager) decompress(s []byte) (*[]byte, error) {
 	return &data, nil
 }
 
-func (b *BackupManager) writeToFile(s []byte, file string) error {
+func (b *StorageManager) writeToFile(s []byte, file string) error {
 	f, err := os.Create(file)
 	if err != nil {
 		return err
@@ -82,7 +89,7 @@ func (b *BackupManager) writeToFile(s []byte, file string) error {
 	return nil
 }
 
-func (b *BackupManager) readFromFile(path string) ([]byte, error) {
+func (b *StorageManager) readFromFile(path string) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
