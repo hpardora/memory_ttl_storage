@@ -1,6 +1,7 @@
 package memory_ttl_storage
 
 import (
+	"encoding/gob"
 	"fmt"
 	"log"
 	"os"
@@ -23,13 +24,15 @@ type Item struct {
 }
 
 type MemoryTTLStorage struct {
-	useBackup  bool
-	showLogs   bool
-	ticker     time.Ticker
-	items      map[string]Item
-	defaultTTL int64
-	backup     *StorageManager
-	mutext     sync.RWMutex
+	mutext          sync.RWMutex
+	useBackup       bool
+	showLogs        bool
+	items           map[string]Item
+	defaultTTL      int64
+	cleaningTicker  time.Ticker
+	backupTicker    time.Ticker
+	backup          *StorageManager
+	onBackupProcess bool
 }
 
 type MemoryTTLStoreConfig struct {
@@ -76,37 +79,77 @@ func New(cfg *MemoryTTLStoreConfig) *MemoryTTLStorage {
 		rlc.backup = NewStorageManager(cfg.BackupPath)
 		err := rlc.backup.Restore(&rlc.items)
 		if err != nil {
-			log.Printf("unable to restore data from backup file: %s", cfg.BackupPath)
+			rlc.log("unable to restore data from backup file: %s", cfg.BackupPath)
 		}
+		rlc.backupTicker = *rlc.NewBackupTicker()
 	}
 
 	rlc.log(fmt.Sprintf("creating a MemoryTTLStorage with tickerTime %d/s and default TTL %d/s", finalTickerTime/time.Second, finalTTLValue))
+	rlc.cleaningTicker = *rlc.NewCleanerTicker(finalTickerTime)
 
-	t := time.NewTicker(finalTickerTime)
+	rlc.RegisterInterface(Item{})
+	return &rlc
+}
+
+func (mts *MemoryTTLStorage) NewCleanerTicker(tickerTime time.Duration) *time.Ticker {
+	t := time.NewTicker(tickerTime)
 	quit := make(chan struct{})
 	go func() {
 		for {
 			select {
 			case <-t.C:
-				rlc.clearOldEntries()
+				mts.clearOldEntries()
 			case <-quit:
 				t.Stop()
 				return
 			}
 		}
 	}()
-	rlc.ticker = *t
-	return &rlc
+	return t
+}
+
+func (mts *MemoryTTLStorage) NewBackupTicker() *time.Ticker {
+	t := time.NewTicker(time.Second * 5)
+	quit := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-t.C:
+				if !mts.onBackupProcess {
+					mts.onBackupProcess = true
+
+					toStore := make(map[string]Item)
+
+					mts.mutext.Lock()
+					for k, v := range mts.items {
+						toStore[k] = v
+					}
+					mts.mutext.Unlock()
+
+					err := mts.backup.Store(mts.items)
+					if err != nil {
+						mts.log("unable create a timed backup", err)
+					}
+					mts.onBackupProcess = false
+				}
+			case <-quit:
+				t.Stop()
+				return
+			}
+		}
+	}()
+	return t
 }
 
 func (mts *MemoryTTLStorage) Stop() {
-	mts.ticker.Stop()
+	mts.cleaningTicker.Stop()
 	if mts.useBackup {
 		mts.mutext.Lock()
 		defer mts.mutext.Unlock()
+		defer mts.backupTicker.Stop()
 		err := mts.backup.Store(mts.items)
 		if err != nil {
-			log.Println("unable to store data", err)
+			mts.log("unable to store data", err)
 		}
 	}
 }
@@ -124,15 +167,11 @@ func prepareBackupPath(folder string) error {
 func (mts *MemoryTTLStorage) clearOldEntries() {
 	mts.mutext.Lock()
 	defer mts.mutext.Unlock()
-
 	for k, v := range mts.items {
 		if v.ExpireTimestamp < time.Now().Unix() {
 			mts.log("deleting outdated item", k)
 			delete(mts.items, k)
 		}
-	}
-	if mts.useBackup{
-		mts.backup.Store(mts.items)
 	}
 }
 
@@ -141,6 +180,10 @@ func (mts *MemoryTTLStorage) log(v ...interface{}) {
 		data := v
 		log.Println(data)
 	}
+}
+
+func (mts *MemoryTTLStorage) RegisterInterface(i interface{}) {
+	gob.Register(i)
 }
 
 func (mts *MemoryTTLStorage) SetDefaultTTL(defaultTTL int64) {

@@ -4,20 +4,19 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/gob"
-	"fmt"
 	"io/ioutil"
 	"os"
 )
 
 type StorageManager struct {
-	backupFilePath  string
+	backupFilePath string
 }
 
 func NewStorageManager(backupFilePath string) *StorageManager {
 	return &StorageManager{backupFilePath: backupFilePath}
 }
 
-func (b *StorageManager) Restore(i interface{})  error{
+func (b *StorageManager) Restore(i interface{}) error {
 	restoredData, err := b.readFromFile(b.backupFilePath)
 	if err != nil {
 		return err
@@ -32,7 +31,6 @@ func (b *StorageManager) Restore(i interface{})  error{
 }
 
 func (b *StorageManager) Store(i interface{}) error {
-
 	dataOut, err := b.encodeToBytes(i)
 	if err != nil {
 		return err
@@ -53,7 +51,6 @@ func (b *StorageManager) encodeToBytes(i interface{}) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("uncompressed size (bytes): ", len(buf.Bytes()))
 	return buf.Bytes(), nil
 }
 
@@ -65,7 +62,6 @@ func (b *StorageManager) compress(s []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("compressed size (bytes): ", len(zipbuf.Bytes()))
 	return zipbuf.Bytes(), nil
 }
 
@@ -76,7 +72,6 @@ func (b *StorageManager) decompress(s []byte) (*[]byte, error) {
 		return nil, err
 	}
 	rdr.Close()
-	fmt.Println("uncompressed size (bytes): ", len(data))
 	return &data, nil
 }
 

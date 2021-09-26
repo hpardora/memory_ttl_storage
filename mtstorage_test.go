@@ -1,7 +1,6 @@
 package memory_ttl_storage
 
 import (
-	"encoding/gob"
 	"os"
 	"testing"
 	"time"
@@ -54,7 +53,7 @@ func TestAddAndRetrieveAnObject(t *testing.T) {
 	returned := i.(*TestStructOne)
 
 	if tsOne.One != returned.One {
-		t.Errorf("Unexpected respose! Expected %d, got %d", tsOne.One, returned.One)
+		t.Errorf("unexpected respose! Expected %d, got %d", tsOne.One, returned.One)
 	}
 }
 
@@ -128,19 +127,24 @@ func TestGetDontModifyExpTS(t *testing.T) {
 
 func TestFileStore(t *testing.T) {
 	mts := New(&MemoryTTLStoreConfig{TTLValue: 2, BackupPath: testPath, UseBackup: true})
-	gob.Register(TestStructOne{})
+	mts.RegisterInterface(TestStructOne{})
 	test := TestStructOne{One: 1, Two: "two"}
 	mts.Add(testKey, test, nil)
 	mts.Stop()
-	os.Remove(testPath)
+	if err:= os.Remove(testPath); err != nil {
+		t.Error(err)
+	}
 }
 
 func TestFileStoreRestore(t *testing.T) {
 	mts := New(&MemoryTTLStoreConfig{TTLValue: 2, BackupPath: testPath, UseBackup: true})
-	gob.Register(TestStructOne{})
+
+	mts.RegisterInterface(TestStructOne{})
 	test := TestStructOne{One: 1, Two: "two"}
 	mts.Add(testKey, test, nil)
 	mts.Stop()
+
+	time.Sleep(time.Second * 5)
 
 	mts2 := New(&MemoryTTLStoreConfig{TTLValue: 2, BackupPath: testPath, UseBackup: true})
 	tmp, ok := mts2.Get(testKey)
@@ -151,6 +155,6 @@ func TestFileStoreRestore(t *testing.T) {
 	if test != test2 {
 		t.Error("at this moment the items must be equals")
 	}
-	os.Remove(testPath)
-
-}
+	if err:= os.Remove(testPath); err != nil {
+		t.Error(err)
+	}}
