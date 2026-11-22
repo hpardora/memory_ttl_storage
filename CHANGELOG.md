@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/hpardora/keepcache/compare/v1.2.0...v1.2.1) (2026-11-22)
+
+
+### Documentation
+
+* remove retired Go Report Card badge ([a6b447f](https://github.com/hpardora/keepcache/commit/a6b447f281f8cb4a98c3982e3eaff7a4ee0a3345))
+
 ## [1.2.0](https://github.com/hpardora/keepcache/compare/v1.1.0...v1.2.0) (2026-11-22)
 
 
