@@ -1,4 +1,4 @@
-package memory_ttl_storage
+package keepcache
 
 import "time"
 

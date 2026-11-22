@@ -1,6 +1,5 @@
-// Deprecated: this module moved to github.com/hpardora/keepcache.
-module github.com/hpardora/memory_ttl_storage
+module github.com/hpardora/keepcache
 
-go 1.22
+go 1.24
 
 require go.uber.org/goleak v1.3.0

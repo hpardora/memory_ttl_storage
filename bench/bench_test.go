@@ -9,7 +9,7 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 	gocache "github.com/patrickmn/go-cache"
 
-	mts "github.com/hpardora/memory_ttl_storage"
+	"github.com/hpardora/keepcache"
 )
 
 const (
@@ -40,9 +40,9 @@ type store struct {
 func stores(tb testing.TB) []store {
 	tb.Helper()
 
-	mc, err := mts.New(mts.Config[string, int]{TTL: ttl})
+	mc, err := keepcache.New(keepcache.Config[string, int]{TTL: ttl})
 	if err != nil {
-		tb.Fatalf("new memory_ttl_storage: %v", err)
+		tb.Fatalf("new keepcache: %v", err)
 	}
 	gc := gocache.New(ttl, 0)
 	tc := ttlcache.New(
@@ -52,7 +52,7 @@ func stores(tb testing.TB) []store {
 
 	ss := []store{
 		{
-			name: "memory_ttl_storage",
+			name: "keepcache",
 			set:  mc.Set,
 			get:  func(k string) bool { _, ok := mc.Get(k); return ok },
 		},

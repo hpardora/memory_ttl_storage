@@ -1,6 +1,6 @@
 //go:build unix
 
-package memory_ttl_storage
+package keepcache
 
 import "syscall"
 
