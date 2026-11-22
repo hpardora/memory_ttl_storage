@@ -1,3 +1,4 @@
+// Deprecated: this module moved to github.com/hpardora/keepcache.
 module github.com/hpardora/memory_ttl_storage
 
 go 1.22
