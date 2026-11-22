@@ -4,7 +4,6 @@ Generic in-memory TTL cache for Go with per-item TTL, eviction callbacks, a size
 
 [![CI](https://github.com/hpardora/keepcache/actions/workflows/ci.yml/badge.svg)](https://github.com/hpardora/keepcache/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/hpardora/keepcache.svg)](https://pkg.go.dev/github.com/hpardora/keepcache)
-[![Go Report Card](https://goreportcard.com/badge/github.com/hpardora/keepcache)](https://goreportcard.com/report/github.com/hpardora/keepcache)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 > **Migrating from memory_ttl_storage:** change the import path to `github.com/hpardora/keepcache` and the package qualifier to `keepcache`. The API is unchanged from memory_ttl_storage v1.1.0. The minimum Go version is now 1.24.
