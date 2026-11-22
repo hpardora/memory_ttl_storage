@@ -7,6 +7,8 @@ Generic in-memory TTL cache for Go with per-item TTL, eviction callbacks, a size
 [![Go Report Card](https://goreportcard.com/badge/github.com/hpardora/memory_ttl_storage)](https://goreportcard.com/report/github.com/hpardora/memory_ttl_storage)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
+> This module has moved to github.com/hpardora/keepcache; `github.com/hpardora/memory_ttl_storage` receives no further releases after v1.1.0.
+
 ## Install
 
 ```sh
@@ -85,6 +87,22 @@ The zero value is valid.
 | `Logger` | nil (discard) | `*slog.Logger` for debug logs about evictions (reason only, never keys or values). |
 
 Negative durations, `MaxItems` or `MaxBackupSize` make `New` return an error wrapping `ErrInvalidConfig`. An undecodable or oversized backup yields `ErrCorruptBackup`; a backup that is not a regular file (symlink, FIFO, device) or is writable by group or others yields `ErrInsecureBackup`. To start empty instead, remove the file and call `New` again. `OnEvict` calls from different goroutines are not ordered relative to each other.
+
+### Loading on a miss
+
+`GetOrLoad` returns the live value or calls your loader, stores the result with the default `TTL` and returns it. Concurrent calls for the same key share one load (single-flight). Loader errors go to every waiter and are never cached; a waiter whose own `ctx` is done returns `ctx.Err()` without stopping the load. The loader runs with the first caller's `ctx`. A nil loader returns `ErrNilLoader`; a panicking loader gives the waiters an error wrapping `ErrLoadPanicked` and re-panics in the first caller. The loaded value is stored when the load finishes, so it overwrites a `Set` made during the load and re-adds a key deleted during the load (last writer wins). If the first caller's `ctx` is cancelled, every waiter for that key gets that error. Each call counts one hit or one miss in `Stats`.
+
+```go
+value, err := cache.GetOrLoad(ctx, "user:42", func(ctx context.Context, key string) (User, error) {
+	return fetchUser(ctx, key)
+})
+```
+
+`GetWithExpiration` is `Get` that also returns the expiry time:
+
+```go
+value, expiresAt, ok := cache.GetWithExpiration("user:42")
+```
 
 Other methods: `SetWithTTL`, `GetAndRefresh` (a hit restarts the item's TTL), `Delete`, `DeleteExpired`, `Len`, `Stats`, `Save`.
 

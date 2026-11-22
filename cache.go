@@ -100,9 +100,11 @@ type Config[K comparable, V any] struct {
 // inconsistent with each other (for example Hits and Misses against
 // Evictions).
 type Stats struct {
-	// Hits counts Get/GetAndRefresh calls that found a live item.
+	// Hits counts Get/GetAndRefresh/GetWithExpiration calls that found a live
+	// item, and GetOrLoad calls served without running their own loader.
 	Hits uint64
-	// Misses counts Get/GetAndRefresh calls that found nothing live.
+	// Misses counts Get/GetAndRefresh/GetWithExpiration calls that found
+	// nothing live, and GetOrLoad calls that ran the loader or returned an error.
 	Misses uint64
 	// Evictions counts every removal or replacement, for all reasons.
 	Evictions uint64
@@ -133,6 +135,10 @@ type Cache[K comparable, V any] struct {
 
 	// saveMu serializes Save so snapshots reach disk in the order taken.
 	saveMu sync.Mutex
+	// loadMu guards inflight, the GetOrLoad calls in progress per key. It is
+	// never held while a loader runs.
+	loadMu   sync.Mutex
+	inflight map[K]*loadCall[V]
 	// mu guards everything below. Mutators hold the write lock; Get, Len and
 	// Stats hold only the read lock.
 	mu          sync.RWMutex
@@ -252,59 +258,80 @@ func (c *Cache[K, V]) SetWithTTL(key K, value V, ttl time.Duration) {
 // Get returns the value for key. An expired item is removed, reported to
 // OnEvict as Expired, and treated as missing. Get does not extend the TTL.
 func (c *Cache[K, V]) Get(key K) (V, bool) {
-	c.mu.RLock()
-	e, ok := c.items[key]
-	if !ok {
-		c.mu.RUnlock()
-		c.misses.Add(1)
-		var zero V
-		return zero, false
-	}
-	if !e.expired(c.now()) {
-		value := e.value
-		c.mu.RUnlock()
-		c.hits.Add(1)
-		return value, true
-	}
-	c.mu.RUnlock()
-	// Expired: removal needs the write lock, which re-looks-up the key because
-	// it may have been replaced or deleted since the read lock was released.
-	return c.get(key, false)
+	value, _, ok := c.peek(key)
+	c.count(ok)
+	return value, ok
+}
+
+// GetWithExpiration is like Get but also returns the time the item expires.
+func (c *Cache[K, V]) GetWithExpiration(key K) (V, time.Time, bool) {
+	value, expiresAt, ok := c.peek(key)
+	c.count(ok)
+	return value, expiresAt, ok
 }
 
 // GetAndRefresh is like Get but, on a hit, atomically restarts the item's
 // own TTL.
 func (c *Cache[K, V]) GetAndRefresh(key K) (V, bool) {
-	return c.get(key, true)
+	value, _, ok := c.lookup(key, true)
+	c.count(ok)
+	return value, ok
 }
 
-// get is the exclusive path shared by GetAndRefresh and Get's expired fallback.
-// It counts exactly one hit or miss.
-func (c *Cache[K, V]) get(key K, refresh bool) (V, bool) {
+// count records one hit or one miss.
+func (c *Cache[K, V]) count(hit bool) {
+	if hit {
+		c.hits.Add(1)
+		return
+	}
+	c.misses.Add(1)
+}
+
+// peek is the read-locked fast path of a lookup without refresh. It counts
+// nothing.
+func (c *Cache[K, V]) peek(key K) (V, time.Time, bool) {
+	c.mu.RLock()
+	e, ok := c.items[key]
+	if !ok {
+		c.mu.RUnlock()
+		var zero V
+		return zero, time.Time{}, false
+	}
+	if !e.expired(c.now()) {
+		value, expiresAt := e.value, e.expiresAt
+		c.mu.RUnlock()
+		return value, expiresAt, true
+	}
+	c.mu.RUnlock()
+	// Expired: removal needs the write lock, which re-looks-up the key because
+	// it may have been replaced or deleted since the read lock was released.
+	return c.lookup(key, false)
+}
+
+// lookup is the exclusive path shared by GetAndRefresh and peek's expired
+// fallback. It counts nothing; callers count one hit or miss.
+func (c *Cache[K, V]) lookup(key K, refresh bool) (V, time.Time, bool) {
 	var zero V
 	c.mu.Lock()
 	e, ok := c.items[key]
 	if !ok {
-		c.misses.Add(1)
 		c.mu.Unlock()
-		return zero, false
+		return zero, time.Time{}, false
 	}
 	now := c.now()
 	if e.expired(now) {
 		evs := c.evict(nil, e, Expired)
-		c.misses.Add(1)
 		c.mu.Unlock()
 		c.notify(evs)
-		return zero, false
+		return zero, time.Time{}, false
 	}
 	if refresh {
 		e.expiresAt = now.Add(e.ttl)
 		heap.Fix(&c.expiry, e.index)
 	}
-	c.hits.Add(1)
-	value := e.value
+	value, expiresAt := e.value, e.expiresAt
 	c.mu.Unlock()
-	return value, true
+	return value, expiresAt, true
 }
 
 // Delete removes key and reports it to OnEvict as Deleted if it was present.

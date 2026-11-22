@@ -70,6 +70,45 @@ func ExampleCache_GetAndRefresh() {
 	// token true
 }
 
+func ExampleCache_GetOrLoad() {
+	cache, err := mts.New(mts.Config[string, string]{})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	load := func(_ context.Context, key string) (string, error) {
+		fmt.Println("loading", key)
+		return "value of " + key, nil
+	}
+	// Concurrent calls for the same key share one load; here the second call
+	// is served from the cache.
+	for range 2 {
+		value, err := cache.GetOrLoad(context.Background(), "k", load)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(value)
+	}
+	// Output:
+	// loading k
+	// value of k
+	// value of k
+}
+
+func ExampleCache_GetWithExpiration() {
+	cache, err := mts.New(mts.Config[string, int]{TTL: time.Hour})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	cache.Set("a", 1)
+
+	value, expiresAt, ok := cache.GetWithExpiration("a")
+	fmt.Println(value, ok, time.Until(expiresAt).Round(time.Hour))
+	// Output:
+	// 1 true 1h0m0s
+}
+
 func ExampleCache_Stats() {
 	cache, err := mts.New(mts.Config[string, int]{})
 	if err != nil {
