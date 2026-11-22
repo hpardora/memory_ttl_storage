@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0](https://github.com/hpardora/keepcache/compare/v1.1.0...v1.2.0) (2026-11-22)
+
+
+### Features
+
+* move module to github.com/hpardora/keepcache ([0e981c7](https://github.com/hpardora/keepcache/commit/0e981c72d08bbc545d950bf0cc5f7d6c35b939f2))
+
+
+### Documentation
+
+* update benchmarks with parallel Set ([c3f4b47](https://github.com/hpardora/keepcache/commit/c3f4b47c40f372e54afbbdc29a194d78ed90ecae))
+
 ## [1.1.0](https://github.com/hpardora/keepcache/compare/v1.0.1...v1.1.0) (2026-11-22)
 
 
