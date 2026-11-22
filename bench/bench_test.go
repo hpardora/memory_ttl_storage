@@ -120,6 +120,19 @@ func BenchmarkGetParallel(b *testing.B) {
 	})
 }
 
+func BenchmarkSetParallel(b *testing.B) {
+	run(b, func(b *testing.B, s store) {
+		var next atomic.Uint64
+		b.RunParallel(func(pb *testing.PB) {
+			i := int(next.Add(1)) * 7919
+			for pb.Next() {
+				i++
+				s.set(keys[i%keyCount], i)
+			}
+		})
+	})
+}
+
 func BenchmarkMixedParallel(b *testing.B) {
 	run(b, func(b *testing.B, s store) {
 		var next atomic.Uint64
