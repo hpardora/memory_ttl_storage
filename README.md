@@ -123,14 +123,15 @@ go1.26.2, linux/amd64, 12th Gen Intel i7-1255U, GOMAXPROCS 12, `-count 10`, medi
 
 | Benchmark | keepcache | go-cache | ttlcache v3 |
 |---|---|---|---|
-| Set (existing key) | 182 ns | 72 ns, 7 B/op | 264 ns |
-| Get | 49 ns | 47 ns | 85 ns |
-| Get (parallel) | 75 ns | 73 ns | 195 ns |
-| 90% get / 10% set (parallel) | 82 ns | 89 ns | 214 ns |
+| Set (existing key) | 190 ns | 72 ns, 7 B/op | 268 ns |
+| Set (parallel) | 243 ns | 240 ns, 8 B/op | 313 ns |
+| Get | 52 ns | 49 ns | 82 ns |
+| Get (parallel) | 78 ns | 71 ns | 211 ns |
+| 90% get / 10% set (parallel) | 83 ns | 85 ns | 214 ns |
 
-All keepcache operations allocate 0 B/op; ttlcache also allocates 0 B/op; go-cache allocates 7 B/op on Set.
+All keepcache operations allocate 0 B/op; ttlcache also allocates 0 B/op; go-cache allocates 7–8 B/op on Set.
 
-Reads take a shared read lock, so parallel reads scale like go-cache. Set is slower than go-cache because each write updates the expiry heap (O(log n)), which lets cleanup touch only expired items instead of scanning the whole map under the lock.
+Reads take a shared read lock, so parallel reads scale like go-cache, and parallel writes are on par with it. A single goroutine's Set is slower than go-cache because each write updates the expiry heap (O(log n)), which lets cleanup touch only expired items instead of scanning the whole map under the lock.
 
 Reproduce: `cd bench && go test -run '^$' -bench . -benchmem -count 10`
 
