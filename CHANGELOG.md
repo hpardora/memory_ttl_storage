@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.1.0](https://github.com/hpardora/keepcache/compare/v1.0.1...v1.1.0) (2026-11-22)
+
+
+### Features
+
+* add GetOrLoad and GetWithExpiration ([af34906](https://github.com/hpardora/keepcache/commit/af34906a0b2f4cdb923ce000408af13a5b64a568))
+
+
+### Documentation
+
+* mark module as moved to github.com/hpardora/keepcache ([3da2c7e](https://github.com/hpardora/keepcache/commit/3da2c7e003bcc418f1a6e4416de823efc9d5ef06))
+
 ## [1.0.1](https://github.com/hpardora/memory_ttl_storage/compare/v1.0.0...v1.0.1) (2026-11-22)
 
 
