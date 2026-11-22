@@ -17,7 +17,7 @@ cd bench && go test -run '^$' -bench . -benchmem     # benchmarks (separate modu
 
 ## Architecture
 
-- `cache.go` — `Cache[K, V]`: a map plus an expiry heap behind one `sync.Mutex`. Only exported methods lock; helpers (`evict`, `record`, `makeRoom`) assume the lock is held. `OnEvict` is called after unlock, from evictions collected under the lock (`notify`), so callbacks may re-enter the cache.
+- `cache.go` — `Cache[K, V]`: a map plus an expiry heap behind one `sync.RWMutex`. Only exported methods lock; helpers (`evict`, `record`, `makeRoom`) assume the write lock is held. `Get`'s fast path (live hit or miss) holds only the read lock and falls back to the exclusive path for an expired item; `Len`/`Stats` also read-lock. Hits/misses are atomics, evictions/expirations live under the write lock. `record` queues evictions only when `OnEvict` is set or debug logging is on. `OnEvict` is called after unlock, from evictions collected under the lock (`notify`), so callbacks may re-enter the cache.
 - `expiry.go` — min-heap ordered by expiry time; each entry stores its heap index so `heap.Fix`/`heap.Remove` are O(log n).
 - `persist.go` — versioned gob+gzip snapshot. `Save` copies live items under the lock, encodes without it, writes a temp file in the same dir, syncs, then renames (atomic; `CreateTemp` already makes it 0600); `saveMu` serializes saves. `New` removes stale temp files, rejects non-regular or group/world-writable backups (`ErrInsecureBackup`) and recovers panics from crafted data. Size caps (`Config.MaxBackupSize`) apply to file and decompressed stream; failures wrap `ErrCorruptBackup`.
 - `Run(ctx)` owns all background work (cleanup sweep, periodic backup, final save on cancel). `New` starts no goroutines; it only loads the backup.

@@ -103,18 +103,20 @@ Other methods: `SetWithTTL`, `GetAndRefresh` (a hit restarts the item's TTL), `D
 
 ## Benchmarks
 
-go1.26.2, linux/amd64, 12th Gen Intel i7-1255U, `-benchtime 1s -count 3`, mean ns/op.
+go1.26.2, linux/amd64, 12th Gen Intel i7-1255U, GOMAXPROCS 12, `-count 10`, median per benchstat.
 
 | Benchmark | memory_ttl_storage | go-cache | ttlcache v3 |
 |---|---|---|---|
-| Set | 243 ns, 32 B, 2 allocs | 90 ns, 7 B, 0 allocs | 310 ns, 0 B, 0 allocs |
-| Get | 52 ns | 52 ns | 94 ns |
-| Get (parallel) | 151 ns | 73 ns | 208 ns |
-| 90% get / 10% set (parallel) | 155 ns | 119 ns | 199 ns |
+| Set (existing key) | 182 ns | 72 ns, 7 B/op | 264 ns |
+| Get | 49 ns | 47 ns | 85 ns |
+| Get (parallel) | 75 ns | 73 ns | 195 ns |
+| 90% get / 10% set (parallel) | 82 ns | 89 ns | 214 ns |
 
-go-cache is faster on Set and parallel reads because it keeps no expiry index; memory_ttl_storage pays for an expiry heap that makes cleanup O(expired·log n) instead of a full scan under the lock.
+All memory_ttl_storage operations allocate 0 B/op; ttlcache also allocates 0 B/op; go-cache allocates 7 B/op on Set.
 
-Reproduce: `cd bench && go test -run '^$' -bench . -benchmem`
+Reads take a shared read lock, so parallel reads scale like go-cache. Set is slower than go-cache because each write updates the expiry heap (O(log n)), which lets cleanup touch only expired items instead of scanning the whole map under the lock.
+
+Reproduce: `cd bench && go test -run '^$' -bench . -benchmem -count 10`
 
 ## Migration from v0
 
