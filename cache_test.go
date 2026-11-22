@@ -8,6 +8,8 @@ import (
 	"math/rand/v2"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,10 +18,24 @@ import (
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
-type fakeClock struct{ t time.Time }
+// fakeClock is goroutine-safe: the concurrent stress test advances it while
+// the cache reads it.
+type fakeClock struct {
+	mu sync.Mutex
+	t  time.Time
+}
 
-func (f *fakeClock) Now() time.Time          { return f.t }
-func (f *fakeClock) Advance(d time.Duration) { f.t = f.t.Add(d) }
+func (f *fakeClock) Now() time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.t
+}
+
+func (f *fakeClock) Advance(d time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.t = f.t.Add(d)
+}
 
 type evicted struct {
 	key    string
@@ -509,5 +525,124 @@ func TestEvictionLogOmitsKeysAndValues(t *testing.T) {
 	}
 	if strings.Contains(out, "secret-key") || strings.Contains(out, "987654") {
 		t.Fatalf("log leaks key or value: %q", out)
+	}
+}
+
+func TestSetExistingKeyAllocatesNothingWithoutConsumers(t *testing.T) {
+	c, err := New(Config[string, int]{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Set("k", 1)
+	if allocs := testing.AllocsPerRun(100, func() { c.Set("k", 2) }); allocs != 0 {
+		t.Fatalf("allocs = %v, want 0", allocs)
+	}
+}
+
+func TestConcurrentOperations(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		onEvict bool
+	}{
+		{"without OnEvict", false},
+		{"with OnEvict", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) { runConcurrentOperations(t, tc.onEvict) })
+	}
+}
+
+func runConcurrentOperations(t *testing.T, withOnEvict bool) {
+	t.Helper()
+	const (
+		workers    = 8
+		opsPerWork = 2000
+		keyCount   = 32
+		tick       = 100 * time.Millisecond
+	)
+	// Built directly: newTestCache's OnEvict appends to an unsynchronized slice.
+	var (
+		cbMu     sync.Mutex
+		byReason = map[EvictReason]uint64{}
+		cfg      = Config[string, int]{TTL: time.Second}
+	)
+	if withOnEvict {
+		cfg.OnEvict = func(_ string, _ int, reason EvictReason) {
+			cbMu.Lock()
+			defer cbMu.Unlock()
+			byReason[reason]++
+		}
+	}
+	c, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := &fakeClock{t: time.Unix(1000, 0)}
+	c.now = clock.Now
+	var reads atomic.Uint64
+	stop := make(chan struct{})
+	var clockDone, wg sync.WaitGroup
+
+	clockDone.Add(1)
+	go func() {
+		defer clockDone.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				clock.Advance(tick)
+				time.Sleep(10 * time.Microsecond)
+			}
+		}
+	}()
+	for w := range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rng := rand.New(rand.NewPCG(uint64(w), 7))
+			for i := range opsPerWork {
+				key := fmt.Sprintf("k%d", rng.IntN(keyCount))
+				switch rng.IntN(6) {
+				case 0:
+					c.Get(key)
+					reads.Add(1)
+				case 1:
+					c.GetAndRefresh(key)
+					reads.Add(1)
+				case 2:
+					c.Set(key, i)
+				case 3:
+					c.SetWithTTL(key, i, time.Duration(1+rng.IntN(3))*tick)
+				case 4:
+					c.Delete(key)
+				case 5:
+					c.DeleteExpired()
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	close(stop)
+	clockDone.Wait()
+
+	assertHeapConsistent(t, c, 0)
+	got := c.Stats()
+	if got.Hits+got.Misses != reads.Load() {
+		t.Fatalf("hits+misses = %d, want %d reads", got.Hits+got.Misses, reads.Load())
+	}
+	if !withOnEvict {
+		return
+	}
+	cbMu.Lock()
+	defer cbMu.Unlock()
+	var total uint64
+	for _, n := range byReason {
+		total += n
+	}
+	if total != got.Evictions {
+		t.Fatalf("OnEvict calls = %d, want Stats.Evictions %d", total, got.Evictions)
+	}
+	if byReason[Expired] != got.Expirations {
+		t.Fatalf("OnEvict Expired calls = %d, want Stats.Expirations %d", byReason[Expired], got.Expirations)
 	}
 }

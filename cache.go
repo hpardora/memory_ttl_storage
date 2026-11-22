@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -88,11 +89,16 @@ type Config[K comparable, V any] struct {
 	// BackupInterval is how often Run saves a backup. Default 30s. Used by Run.
 	BackupInterval time.Duration
 	// Logger receives debug logs about evictions (reason only, never keys or
-	// values). Nil discards logs.
+	// values). Nil discards logs. Whether eviction debug logging happens is
+	// decided once, when New is called: raising a handler's level to Debug
+	// later (for example through a slog.LevelVar) does not enable it.
 	Logger *slog.Logger
 }
 
-// Stats is a snapshot of cache counters.
+// Stats holds cache counters. The counters are read independently, not under
+// one atomic step, so under concurrent use they may be momentarily
+// inconsistent with each other (for example Hits and Misses against
+// Evictions).
 type Stats struct {
 	// Hits counts Get/GetAndRefresh calls that found a live item.
 	Hits uint64
@@ -117,12 +123,23 @@ type Cache[K comparable, V any] struct {
 	cfg Config[K, V]
 	now func() time.Time
 
+	// trackEvictions is true when someone consumes evictions (OnEvict or debug
+	// logging); otherwise record skips building the notify list.
+	trackEvictions bool
+
+	// hits and misses are atomic so Get's read-locked fast path can count.
+	hits   atomic.Uint64
+	misses atomic.Uint64
+
 	// saveMu serializes Save so snapshots reach disk in the order taken.
 	saveMu sync.Mutex
-	mu     sync.Mutex
-	items  map[K]*entry[K, V]
-	expiry expiryHeap[K, V]
-	stats  Stats
+	// mu guards everything below. Mutators hold the write lock; Get, Len and
+	// Stats hold only the read lock.
+	mu          sync.RWMutex
+	items       map[K]*entry[K, V]
+	expiry      expiryHeap[K, V]
+	evictions   uint64
+	expirations uint64
 }
 
 // New returns a Cache. Negative durations, MaxItems or MaxBackupSize yield an
@@ -148,9 +165,10 @@ func New[K comparable, V any](cfg Config[K, V]) (*Cache[K, V], error) {
 		cfg.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	c := &Cache[K, V]{
-		cfg:   cfg,
-		now:   time.Now,
-		items: make(map[K]*entry[K, V]),
+		cfg:            cfg,
+		now:            time.Now,
+		trackEvictions: cfg.OnEvict != nil || cfg.Logger.Enabled(context.Background(), slog.LevelDebug),
+		items:          make(map[K]*entry[K, V]),
 	}
 	if cfg.BackupPath != "" {
 		if err := c.load(); err != nil {
@@ -234,6 +252,23 @@ func (c *Cache[K, V]) SetWithTTL(key K, value V, ttl time.Duration) {
 // Get returns the value for key. An expired item is removed, reported to
 // OnEvict as Expired, and treated as missing. Get does not extend the TTL.
 func (c *Cache[K, V]) Get(key K) (V, bool) {
+	c.mu.RLock()
+	e, ok := c.items[key]
+	if !ok {
+		c.mu.RUnlock()
+		c.misses.Add(1)
+		var zero V
+		return zero, false
+	}
+	if !e.expired(c.now()) {
+		value := e.value
+		c.mu.RUnlock()
+		c.hits.Add(1)
+		return value, true
+	}
+	c.mu.RUnlock()
+	// Expired: removal needs the write lock, which re-looks-up the key because
+	// it may have been replaced or deleted since the read lock was released.
 	return c.get(key, false)
 }
 
@@ -243,19 +278,21 @@ func (c *Cache[K, V]) GetAndRefresh(key K) (V, bool) {
 	return c.get(key, true)
 }
 
+// get is the exclusive path shared by GetAndRefresh and Get's expired fallback.
+// It counts exactly one hit or miss.
 func (c *Cache[K, V]) get(key K, refresh bool) (V, bool) {
 	var zero V
 	c.mu.Lock()
 	e, ok := c.items[key]
 	if !ok {
-		c.stats.Misses++
+		c.misses.Add(1)
 		c.mu.Unlock()
 		return zero, false
 	}
 	now := c.now()
 	if e.expired(now) {
 		evs := c.evict(nil, e, Expired)
-		c.stats.Misses++
+		c.misses.Add(1)
 		c.mu.Unlock()
 		c.notify(evs)
 		return zero, false
@@ -264,7 +301,7 @@ func (c *Cache[K, V]) get(key K, refresh bool) (V, bool) {
 		e.expiresAt = now.Add(e.ttl)
 		heap.Fix(&c.expiry, e.index)
 	}
-	c.stats.Hits++
+	c.hits.Add(1)
 	value := e.value
 	c.mu.Unlock()
 	return value, true
@@ -297,23 +334,30 @@ func (c *Cache[K, V]) DeleteExpired() {
 // Len returns the number of stored items. It may include expired items that
 // have not been swept yet.
 func (c *Cache[K, V]) Len() int {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return len(c.items)
 }
 
-// Stats returns a snapshot of the cache counters.
+// Stats returns the cache counters. Hits and Misses are atomics updated
+// outside the lock while the other fields are read under it, so the result is
+// not a point-in-time snapshot and may be momentarily inconsistent under
+// concurrent use.
 func (c *Cache[K, V]) Stats() Stats {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	s := c.stats
-	s.Items = len(c.items)
-	return s
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return Stats{
+		Hits:        c.hits.Load(),
+		Misses:      c.misses.Load(),
+		Evictions:   c.evictions,
+		Expirations: c.expirations,
+		Items:       len(c.items),
+	}
 }
 
 // makeRoom evicts from the top of the expiry heap until one more item fits
 // under MaxItems. The soonest-expiring item goes first, so expired items are
-// reclaimed before live ones. Lock must be held.
+// reclaimed before live ones. Write lock must be held.
 func (c *Cache[K, V]) makeRoom(evs []eviction[K, V], now time.Time) []eviction[K, V] {
 	if c.cfg.MaxItems == 0 {
 		return evs
@@ -329,7 +373,7 @@ func (c *Cache[K, V]) makeRoom(evs []eviction[K, V], now time.Time) []eviction[K
 	return evs
 }
 
-// evict removes e from the cache and records the eviction. Lock must be held.
+// evict removes e from the cache and records the eviction. Write lock must be held.
 func (c *Cache[K, V]) evict(evs []eviction[K, V], e *entry[K, V], reason EvictReason) []eviction[K, V] {
 	delete(c.items, e.key)
 	heap.Remove(&c.expiry, e.index)
@@ -337,11 +381,14 @@ func (c *Cache[K, V]) evict(evs []eviction[K, V], e *entry[K, V], reason EvictRe
 }
 
 // record counts an eviction and queues it for notify, without removing anything.
-// Lock must be held.
+// Write lock must be held.
 func (c *Cache[K, V]) record(evs []eviction[K, V], e *entry[K, V], reason EvictReason) []eviction[K, V] {
-	c.stats.Evictions++
+	c.evictions++
 	if reason == Expired {
-		c.stats.Expirations++
+		c.expirations++
+	}
+	if !c.trackEvictions {
+		return evs
 	}
 	return append(evs, eviction[K, V]{key: e.key, value: e.value, reason: reason})
 }
