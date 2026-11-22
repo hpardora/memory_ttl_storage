@@ -1,24 +1,24 @@
-# memory_ttl_storage
+# keepcache
 
 Generic in-memory TTL cache for Go with per-item TTL, eviction callbacks, a size limit and crash-safe file persistence. Zero dependencies.
 
-[![CI](https://github.com/hpardora/memory_ttl_storage/actions/workflows/ci.yml/badge.svg)](https://github.com/hpardora/memory_ttl_storage/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/hpardora/memory_ttl_storage.svg)](https://pkg.go.dev/github.com/hpardora/memory_ttl_storage)
-[![Go Report Card](https://goreportcard.com/badge/github.com/hpardora/memory_ttl_storage)](https://goreportcard.com/report/github.com/hpardora/memory_ttl_storage)
+[![CI](https://github.com/hpardora/keepcache/actions/workflows/ci.yml/badge.svg)](https://github.com/hpardora/keepcache/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/hpardora/keepcache.svg)](https://pkg.go.dev/github.com/hpardora/keepcache)
+[![Go Report Card](https://goreportcard.com/badge/github.com/hpardora/keepcache)](https://goreportcard.com/report/github.com/hpardora/keepcache)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
-> This module has moved to github.com/hpardora/keepcache; `github.com/hpardora/memory_ttl_storage` receives no further releases after v1.1.0.
+> **Migrating from memory_ttl_storage:** change the import path to `github.com/hpardora/keepcache` and the package qualifier to `keepcache`. The API is unchanged from memory_ttl_storage v1.1.0. The minimum Go version is now 1.24.
 
 ## Install
 
 ```sh
-go get github.com/hpardora/memory_ttl_storage@latest
+go get github.com/hpardora/keepcache@latest
 ```
 
 ## Quick start
 
 ```go
-cache, err := mts.New(mts.Config[string, int]{})
+cache, err := keepcache.New(keepcache.Config[string, int]{})
 if err != nil {
 	log.Fatal(err)
 }
@@ -32,8 +32,6 @@ _, ok = cache.Get("missing")
 fmt.Println(ok) // false
 ```
 
-(`mts` is the import alias for `github.com/hpardora/memory_ttl_storage`.)
-
 ### Lifecycle and persistence
 
 - `New` starts no goroutines. `Get` never returns expired items; an expired item is removed on access.
@@ -46,13 +44,13 @@ ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SI
 defer stop()
 
 // New restores /var/lib/myapp/cache.bak if it exists.
-cache, err := mts.New(mts.Config[string, string]{
+cache, err := keepcache.New(keepcache.Config[string, string]{
 	TTL:            time.Hour,
 	BackupPath:     "/var/lib/myapp/cache.bak",
 	BackupInterval: 30 * time.Second,
 })
 if err != nil {
-	log.Fatal(err) // errors.Is(err, mts.ErrCorruptBackup) for an unreadable backup
+	log.Fatal(err) // errors.Is(err, keepcache.ErrCorruptBackup) for an unreadable backup
 }
 
 // Run sweeps expired items and saves periodically until ctx is cancelled,
@@ -108,7 +106,7 @@ Other methods: `SetWithTTL`, `GetAndRefresh` (a hit restarts the item's TTL), `D
 
 ## Comparison
 
-| | memory_ttl_storage | patrickmn/go-cache | jellydator/ttlcache/v3 |
+| | keepcache | patrickmn/go-cache | jellydator/ttlcache/v3 |
 |---|---|---|---|
 | Generics | yes | no | yes |
 | Per-item TTL | yes | yes | yes |
@@ -123,14 +121,14 @@ Other methods: `SetWithTTL`, `GetAndRefresh` (a hit restarts the item's TTL), `D
 
 go1.26.2, linux/amd64, 12th Gen Intel i7-1255U, GOMAXPROCS 12, `-count 10`, median per benchstat.
 
-| Benchmark | memory_ttl_storage | go-cache | ttlcache v3 |
+| Benchmark | keepcache | go-cache | ttlcache v3 |
 |---|---|---|---|
 | Set (existing key) | 182 ns | 72 ns, 7 B/op | 264 ns |
 | Get | 49 ns | 47 ns | 85 ns |
 | Get (parallel) | 75 ns | 73 ns | 195 ns |
 | 90% get / 10% set (parallel) | 82 ns | 89 ns | 214 ns |
 
-All memory_ttl_storage operations allocate 0 B/op; ttlcache also allocates 0 B/op; go-cache allocates 7 B/op on Set.
+All keepcache operations allocate 0 B/op; ttlcache also allocates 0 B/op; go-cache allocates 7 B/op on Set.
 
 Reads take a shared read lock, so parallel reads scale like go-cache. Set is slower than go-cache because each write updates the expiry heap (O(log n)), which lets cleanup touch only expired items instead of scanning the whole map under the lock.
 

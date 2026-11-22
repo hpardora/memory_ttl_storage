@@ -1,9 +1,9 @@
-// Package memory_ttl_storage provides a generic in-memory key/value cache
+// Package keepcache provides a generic in-memory key/value cache
 // whose items expire after a time-to-live.
 //
 // The cache starts no goroutines. Expired items are removed lazily on access
 // and by DeleteExpired.
-package memory_ttl_storage
+package keepcache
 
 import (
 	"container/heap"

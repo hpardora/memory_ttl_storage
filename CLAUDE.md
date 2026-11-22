@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Generic in-memory TTL cache (`github.com/hpardora/memory_ttl_storage`, package `memory_ttl_storage`, go 1.22, no runtime dependencies) with per-item TTL, eviction callbacks, `MaxItems` limit and file persistence. API docs: `README.md` and `example_test.go`.
+Generic in-memory TTL cache (`github.com/hpardora/keepcache`, package `keepcache`, go 1.24, no runtime dependencies) with per-item TTL, eviction callbacks, `MaxItems` limit and file persistence. API docs: `README.md` and `example_test.go`.
 
 ## Commands
 

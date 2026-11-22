@@ -1,4 +1,4 @@
-package memory_ttl_storage_test
+package keepcache_test
 
 import (
 	"context"
@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"time"
 
-	mts "github.com/hpardora/memory_ttl_storage"
+	"github.com/hpardora/keepcache"
 )
 
 func Example() {
-	cache, err := mts.New(mts.Config[string, int]{})
+	cache, err := keepcache.New(keepcache.Config[string, int]{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -30,10 +30,10 @@ func Example() {
 }
 
 func ExampleNew_custom() {
-	cache, err := mts.New(mts.Config[string, string]{
+	cache, err := keepcache.New(keepcache.Config[string, string]{
 		TTL:      time.Hour,
 		MaxItems: 2,
-		OnEvict: func(key, _ string, reason mts.EvictReason) {
+		OnEvict: func(key, _ string, reason keepcache.EvictReason) {
 			fmt.Println("evicted", key, reason)
 		},
 	})
@@ -56,7 +56,7 @@ func ExampleNew_custom() {
 }
 
 func ExampleCache_GetAndRefresh() {
-	cache, err := mts.New(mts.Config[string, string]{TTL: time.Minute})
+	cache, err := keepcache.New(keepcache.Config[string, string]{TTL: time.Minute})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func ExampleCache_GetAndRefresh() {
 }
 
 func ExampleCache_GetOrLoad() {
-	cache, err := mts.New(mts.Config[string, string]{})
+	cache, err := keepcache.New(keepcache.Config[string, string]{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func ExampleCache_GetOrLoad() {
 }
 
 func ExampleCache_GetWithExpiration() {
-	cache, err := mts.New(mts.Config[string, int]{TTL: time.Hour})
+	cache, err := keepcache.New(keepcache.Config[string, int]{TTL: time.Hour})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func ExampleCache_GetWithExpiration() {
 }
 
 func ExampleCache_Stats() {
-	cache, err := mts.New(mts.Config[string, int]{})
+	cache, err := keepcache.New(keepcache.Config[string, int]{})
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -133,11 +133,11 @@ func ExampleCache_Run() {
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	cfg := mts.Config[string, string]{
+	cfg := keepcache.Config[string, string]{
 		TTL:        time.Hour,
 		BackupPath: filepath.Join(dir, "cache.bak"),
 	}
-	cache, err := mts.New(cfg)
+	cache, err := keepcache.New(cfg)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -153,7 +153,7 @@ func ExampleCache_Run() {
 	}
 
 	// A new cache with the same BackupPath restores the item.
-	restored, err := mts.New(cfg)
+	restored, err := keepcache.New(cfg)
 	if err != nil {
 		fmt.Println(err)
 		return
