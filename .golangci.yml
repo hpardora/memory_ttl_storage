@@ -1,0 +1,22 @@
+version: "2"
+
+linters:
+  enable:
+    - errorlint
+    - gosec
+    - revive
+    - misspell
+    - unconvert
+    - gocritic
+  exclusions:
+    rules:
+      # Tests use seeded math/rand for reproducible model tests and index
+      # slices whose bounds are checked just above.
+      - path: _test\.go
+        linters:
+          - gosec
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
